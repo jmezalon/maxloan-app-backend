@@ -1,6 +1,53 @@
-const { sendEmail } = require("../../utils/email");
+const { google } = require("googleapis");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 
-// After user registers, generate and send email verification token
+// Create an OAuth2 client with your client ID and client secret
+const oAuth2Client = new google.auth.OAuth2(
+  process.env.GMAIL_CLIENT_ID,
+  process.env.GMAIL_CLIENT_SECRET,
+  process.env.GMAIL_REDIRECT_URL
+);
+
+// Function to send an email using OAuth2 authentication
+const sendEmailWithOAuth2 = async (user, subject, text) => {
+  try {
+    // Get OAuth2 tokens for sending emails
+    const tokens = await oAuth2Client.getAccessToken();
+
+    // Create a Nodemailer transporter using OAuth2 credentials
+    const transporter = nodemailer.createTransport({
+      service: "Gmail",
+      auth: {
+        type: "OAuth2",
+        user: process.env.GMAIL_USER,
+        clientId: process.env.GMAIL_CLIENT_ID,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET,
+        refreshToken: tokens.res.data.refresh_token,
+        accessToken: tokens.token,
+      },
+    });
+
+    const mailOptions = {
+      from: "your-app@example.com",
+      to: user.email,
+      subject,
+      text,
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email:", error);
+      } else {
+        console.log("Email sent:", info.response);
+      }
+    });
+  } catch (error) {
+    console.error("OAuth2 token error:", error);
+  }
+};
+
+// Function to generate and send email verification token
 const generateEmailVerificationToken = async (user) => {
   const token = crypto.randomBytes(20).toString("hex");
   user.emailVerificationToken = token;
@@ -11,26 +58,7 @@ const generateEmailVerificationToken = async (user) => {
   const confirmationLink = `https://your-app.com/verify-email?token=${token}`;
   const emailText = `Click the following link to verify your email address: ${confirmationLink}`;
 
-  // Use Nodemailer or a similar library to send the email
-  // Example: Send email using Nodemailer
-  const transporter = nodemailer.createTransport({
-    // Configure your email transport (e.g., SMTP, Gmail)
-  });
-
-  const mailOptions = {
-    from: "your-app@example.com",
-    to: user.email,
-    subject: "Email Verification",
-    text: emailText,
-  };
-
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.error("Error sending email:", error);
-    } else {
-      console.log("Email sent:", info.response);
-    }
-  });
+  await sendEmailWithOAuth2(user, "Email Verification", emailText);
 };
 
 // Handle email confirmation route
@@ -45,7 +73,6 @@ app.get("/verify-email", async (req, res) => {
     return res.status(400).json({ message: "Invalid or expired token" });
   }
 
-  // Check if the token is expired
   if (user.emailVerificationExpiry < Date.now()) {
     // Token has expired, handle the expiration
     const newToken = crypto.randomBytes(20).toString("hex");
@@ -57,20 +84,7 @@ app.get("/verify-email", async (req, res) => {
     const newConfirmationLink = `https://your-app.com/verify-email?token=${newToken}`;
     const emailText = `Your previous email verification link has expired. Click the following link to verify your email address: ${newConfirmationLink}`;
 
-    // Send the email using your email sending utility
-    sendEmail(user.email, "Email Verification", emailText)
-      .then(() => {
-        // Email sent successfully
-        return res.status(400).json({
-          message:
-            "Email verification link has expired. We have sent a new link to your email address.",
-        });
-      })
-      .catch((error) => {
-        // Handle email sending error
-        console.error("Error sending email:", error);
-        return res.status(500).json({ message: "Failed to send email" });
-      });
+    await sendEmailWithOAuth2(user, "Email Verification", emailText);
 
     return res.status(400).json({
       message:
