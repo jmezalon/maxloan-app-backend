@@ -12,6 +12,16 @@ const userSchema = new mongoose.Schema({
     trim: true,
     minlength: 3,
   },
+  firstName: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  lastName: {
+    type: String,
+    required: true,
+    trim: true,
+  },
   email: {
     type: String,
     required: true,
@@ -51,6 +61,14 @@ const userSchema = new mongoose.Schema({
     default: false,
   },
   emailVerificationExpiry: Date, // Expiry date of email verification token
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
 });
 
 userSchema.plugin(uniqueValidator);
